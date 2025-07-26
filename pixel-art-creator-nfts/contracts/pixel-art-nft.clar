@@ -49,3 +49,59 @@
 (define-constant ERR-NOT-LISTED (err u403))
 (define-constant ERR-INSUFFICIENT-FUNDS (err u405))
 (define-constant ERR-TRANSFER-FAILED (err u406))
+
+;; Read-only functions
+(define-read-only (get-last-token-id)
+    (ok (var-get last-token-id))
+)
+
+(define-read-only (get-token-uri (token-id uint))
+    (ok (some (concat (var-get base-uri) (uint-to-ascii token-id))))
+)
+
+(define-read-only (get-owner (token-id uint))
+    (ok (nft-get-owner? pixel-art-nft token-id))
+)
+
+(define-read-only (get-token-metadata (token-id uint))
+    (map-get? token-metadata token-id)
+)
+
+(define-read-only (get-token-listing (token-id uint))
+    (map-get? token-listings token-id)
+)
+
+(define-read-only (get-creator-stats (creator principal))
+    (default-to {total-minted: u0, total-earned: u0} (map-get? creator-stats creator))
+)
+
+(define-read-only (get-collection-stats (collection-name (string-ascii 50)))
+    (default-to {total-items: u0, floor-price: u0} (map-get? collection-stats collection-name))
+)
+
+(define-read-only (is-approved-operator (owner principal) (operator principal))
+    (default-to false (map-get? approved-operators {owner: owner, operator: operator}))
+)
+
+(define-read-only (get-mint-fee)
+    (var-get mint-fee)
+)
+
+(define-read-only (get-tokens-by-owner (owner principal))
+    (let ((max-id (var-get last-token-id)))
+        (filter-tokens-by-owner owner u1 max-id (list ))
+    )
+)
+
+;; Private function to filter tokens by owner
+(define-private (filter-tokens-by-owner (target-owner principal) (current-id uint) (max-id uint) (acc (list 500 uint)))
+    (if (> current-id max-id)
+        acc
+        (let ((token-owner (nft-get-owner? pixel-art-nft current-id)))
+            (if (is-eq (some target-owner) token-owner)
+                (filter-tokens-by-owner target-owner (+ current-id u1) max-id (unwrap-panic (as-max-len? (append acc current-id) u500)))
+                (filter-tokens-by-owner target-owner (+ current-id u1) max-id acc)
+            )
+        )
+    )
+)
