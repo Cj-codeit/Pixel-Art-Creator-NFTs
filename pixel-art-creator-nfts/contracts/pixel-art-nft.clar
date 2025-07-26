@@ -87,23 +87,39 @@
     (var-get mint-fee)
 )
 
-;; Simplified function to get tokens by owner
+;; Function to check if a specific token is owned by a user
+(define-read-only (is-token-owned-by (token-id uint) (owner principal))
+    (is-eq (some owner) (nft-get-owner? pixel-art-nft token-id))
+)
+
+;; Simplified function to get tokens by owner using fold instead of recursion
 (define-read-only (get-tokens-by-owner (owner principal))
     (let ((max-id (var-get last-token-id)))
-        (filter-owner-tokens owner u1 max-id (list ))
+        (if (is-eq max-id u0)
+            (list)
+            (fold check-token-ownership 
+                  (list u1 u2 u3 u4 u5 u6 u7 u8 u9 u10 u11 u12 u13 u14 u15 u16 u17 u18 u19 u20 
+                        u21 u22 u23 u24 u25 u26 u27 u28 u29 u30 u31 u32 u33 u34 u35 u36 u37 u38 u39 u40
+                        u41 u42 u43 u44 u45 u46 u47 u48 u49 u50 u51 u52 u53 u54 u55 u56 u57 u58 u59 u60
+                        u61 u62 u63 u64 u65 u66 u67 u68 u69 u70 u71 u72 u73 u74 u75 u76 u77 u78 u79 u80
+                        u81 u82 u83 u84 u85 u86 u87 u88 u89 u90 u91 u92 u93 u94 u95 u96 u97 u98 u99 u100)
+                  {owner: owner, max-id: max-id, tokens: (list)})
+        )
     )
 )
 
-;; Private function to filter tokens by owner (renamed to avoid interdependency)
-(define-private (filter-owner-tokens (target-owner principal) (current-id uint) (max-id uint) (acc (list 500 uint)))
-    (if (> current-id max-id)
-        acc
-        (let ((token-owner (nft-get-owner? pixel-art-nft current-id)))
-            (if (is-eq (some target-owner) token-owner)
-                (filter-owner-tokens target-owner (+ current-id u1) max-id (unwrap-panic (as-max-len? (append acc current-id) u500)))
-                (filter-owner-tokens target-owner (+ current-id u1) max-id acc)
-            )
+;; Helper function for fold-based token ownership checking
+(define-private (check-token-ownership (token-id uint) (acc {owner: principal, max-id: uint, tokens: (list 100 uint)}))
+    (if (<= token-id (get max-id acc))
+        (if (is-token-owned-by token-id (get owner acc))
+            {
+                owner: (get owner acc),
+                max-id: (get max-id acc),
+                tokens: (unwrap-panic (as-max-len? (append (get tokens acc) token-id) u100))
+            }
+            acc
         )
+        acc
     )
 )
 
