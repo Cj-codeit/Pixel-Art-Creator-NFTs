@@ -105,3 +105,135 @@
         )
     )
 )
+
+;; Public functions
+(define-public (transfer (token-id uint) (sender principal) (recipient principal))
+    (begin
+        (asserts! (or (is-eq tx-sender sender) 
+                     (is-approved-operator sender tx-sender)) ERR-NOT-AUTHORIZED)
+        (asserts! (is-some (nft-get-owner? pixel-art-nft token-id)) ERR-NOT-FOUND)
+        ;; Remove listing if exists
+        (map-delete token-listings token-id)
+        (nft-transfer? pixel-art-nft token-id sender recipient)
+    )
+)
+
+(define-public (mint-pixel-art 
+    (recipient principal) 
+    (pixel-data (string-ascii 1000)) 
+    (royalty-percent uint)
+    (title (string-ascii 100))
+    (description (string-ascii 500))
+    (tags (string-ascii 200)))
+    (let
+        (
+            (next-id (+ (var-get last-token-id) u1))
+            (mint-fee (var-get mint-fee))
+        )
+        (asserts! (<= royalty-percent u25) ERR-INVALID-ROYALTY)
+        
+        ;; Charge mint fee
+        (if (> mint-fee u0)
+            (try! (stx-transfer? mint-fee tx-sender (var-get contract-owner)))
+            true
+        )
+        
+        (try! (nft-mint? pixel-art-nft next-id recipient))
+        (map-set token-metadata next-id {
+            creator: tx-sender,
+            pixel-data: pixel-data,
+            royalty-percent: royalty-percent,
+            creation-block: block-height,
+            title: title,
+            description: description,
+            tags: tags
+        })
+        
+        ;; Update creator stats
+        (let ((current-stats (get-creator-stats tx-sender)))
+            (map-set creator-stats tx-sender {
+                total-minted: (+ (get total-minted current-stats) u1),
+                total-earned: (get total-earned current-stats)
+            })
+        )
+        
+        (var-set last-token-id next-id)
+        (ok next-id)
+    )
+)
+
+(define-public (list-token (token-id uint) (price uint))
+    (let ((token-owner (unwrap! (nft-get-owner? pixel-art-nft token-id) ERR-NOT-FOUND)))
+        (asserts! (is-eq token-owner tx-sender) ERR-NOT-AUTHORIZED)
+        (asserts! (> price u0) ERR-INVALID-PRICE)
+        (map-set token-listings token-id {
+            seller: tx-sender,
+            price: price,
+            listed-at: block-height
+        })
+        (ok true)
+    )
+)
+
+(define-public (unlist-token (token-id uint))
+    (let ((listing (unwrap! (map-get? token-listings token-id) ERR-NOT-LISTED)))
+        (asserts! (is-eq (get seller listing) tx-sender) ERR-NOT-AUTHORIZED)
+        (map-delete token-listings token-id)
+        (ok true)
+    )
+)
+
+(define-public (buy-token (token-id uint))
+    (let 
+        (
+            (listing (unwrap! (map-get? token-listings token-id) ERR-NOT-LISTED))
+            (price (get price listing))
+            (seller (get seller listing))
+            (metadata (unwrap! (get-token-metadata token-id) ERR-NOT-FOUND))
+            (creator (get creator metadata))
+            (royalty-percent (get royalty-percent metadata))
+            (platform-fee (/ (* price (var-get platform-fee-percent)) u100))
+            (royalty-fee (if (not (is-eq creator seller)) 
+                           (/ (* price royalty-percent) u100) 
+                           u0))
+            (seller-amount (- (- price platform-fee) royalty-fee))
+        )
+        
+        ;; Transfer payment
+        (try! (stx-transfer? seller-amount tx-sender seller))
+        
+        ;; Pay royalty to creator if different from seller
+        (if (and (> royalty-fee u0) (not (is-eq creator seller)))
+            (try! (stx-transfer? royalty-fee tx-sender creator))
+            true
+        )
+        
+        ;; Pay platform fee
+        (if (> platform-fee u0)
+            (try! (stx-transfer? platform-fee tx-sender (var-get contract-owner)))
+            true
+        )
+        
+        ;; Transfer NFT
+        (try! (nft-transfer? pixel-art-nft token-id seller tx-sender))
+        
+        ;; Update creator stats
+        (let ((current-stats (get-creator-stats creator)))
+            (map-set creator-stats creator {
+                total-minted: (get total-minted current-stats),
+                total-earned: (+ (get total-earned current-stats) royalty-fee)
+            })
+        )
+        
+        ;; Remove listing
+        (map-delete token-listings token-id)
+        (ok true)
+    )
+)
+
+(define-public (set-approved-operator (operator principal) (approved bool))
+    (begin
+        (map-set approved-operators {owner: tx-sender, operator: operator} approved)
+        (ok true)
+    )
+)
